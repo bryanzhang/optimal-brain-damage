@@ -1,7 +1,3 @@
+DATA_PATH = "data"
 
-DATA_PATH = 'data'
-
-PRETRAIN_MODEL_PATH = 'data/model.pth'
-
-
-
+PRETRAIN_MODEL_PATH = "data/model.pth"
