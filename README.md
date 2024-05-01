@@ -136,7 +136,7 @@ Further elimination of parameters would lead to a decrease in accuracy.
 }
 ```
 
-```
+```bibtex
 @misc{yao2021adahessian,
       title={ADAHESSIAN: An Adaptive Second Order Optimizer for Machine Learning},
       author={Zhewei Yao and Amir Gholami and Sheng Shen and Mustafa Mustafa and Kurt Keutzer and Michael W. Mahoney},
