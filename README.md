@@ -32,7 +32,7 @@ $$
 It is also assumed that each weight changes the error independently of the other weights, so we can approximate the error change with respect to an individual weight as:
 
 $$
-\delta E_{i} = \frac{1}{2} h_{ii} \delta w_{i}^{2}
+\delta E_{w_{i}} = \frac{1}{2} h_{ii} \delta w_{i}^{2}
 $$
 
 Remember that our objective is to 'delete' the weight (connection), so we can set $\delta w_{i} = -w_{i}$.
@@ -40,7 +40,7 @@ Remember that our objective is to 'delete' the weight (connection), so we can se
 That is, the effect of deleting a weight is:
 
 $$
-\delta E_{i} = \frac{1}{2} h_{ii} w_{i}^{2}
+\delta E_{w_{i}} = \frac{1}{2} h_{ii} w_{i}^{2}
 $$
 
 In the paper, it is called the saliency of the weight.
@@ -60,20 +60,43 @@ That is, we first pretrain and then iterate over the OBD procedure, each time ha
 
 ## PyTorch Implementation
 
-PyTorch provides a native way of computing the Hessian of the loss function with respect to the weights, but it's pretty expensive memory wise. Since we are interested only in the diagonal of the Hessian, we can compute the diagonal of the Hessian using the following code:
+PyTorch provides a native way of computing the Hessian of the loss function with respect to the weights, but it's pretty expensive memory wise. Since we are interested only in the diagonal of the Hessian, we can approximate the diagonal of the Hessian using the following code:
 
 ```python
 
-# returs a flattened version of the diagonal of the Hessian
-def hessian_diag(loss, params):
-    grads = torch.autograd.grad(loss, params, create_graph=True) # df/dw
-    grads2 = torch.autograd.grad(grads, params, grad_outputs=[torch.ones_like(grad) for grad in grads]) # d^2f/dw^2
-    # grads2 is the elements of the diagonal of the Hessian with respect to the weights
-    return torch.cat([grad.contiguous().view(-1) for grad in grads2]) # flatten the diagonal of the Hessian
+    # df/dw (Jacobian-vector products)
+    grads = torch.autograd.grad(loss, model.parameters(), create_graph=True)
 
+    rademacher_zs = [((torch.rand(g.shape) < 0.5).float() * 2 - 1) for g in grads] # rademacher random variables, because we need to sample from {-1, 1}
+
+    # Hessian-vector product
+    grads2 = torch.autograd.grad(
+        grads,
+        model.parameters(),
+        grad_outputs=rademacher_zs,
+    )
+
+    hessian_diags = [g2 * z for g2, z in zip(grads2, rademacher_zs)]
+
+    hessdiag = torch.cat([h.view(-1) for h in hessian_diags])
+
+    saliencies = (
+        hessdiag
+        * (
+            torch.cat([param.contiguous().view(-1) for param in model.parameters()])
+            ** 2
+        )
+        / 2
+    )
 ```
 
-We can then compute the saliency of each weight, and prune the smallest ones. The complete implementation can be found in the code.
+This is an approximation of the Hessian diagonal, which we use to compute the saliency of each weight. The details can be found on the code.
+The approximation implementation follows the details mentioned in [the AdaHessian paper](https://arxiv.org/pdf/2006.00719).
+
+![OBD](./images/ada_hessian_diag.png)
+
+To compute the estimation, we could simply sample different times the diagonal of the Hessian and average the results, but in practice, form efficiency reasons, we only sample once, and it works
+pretty much the same way in this case.
 
 ## Experiments and results
 
@@ -94,20 +117,32 @@ class SimpleModel(torch.nn.Module):
 
 ```
 
-It has a total of 101770 parameters. After 10 epochs of pretraining on the MNIST dataset, the accuracy is 97.31. We then run the algorithm, and find that we can prune 100000 parameters, with an accuracy of 91.04%. Even after having pruned 76k parameters, we still get 97.1% accuracy, which is impressive.
+It has a total of 101770 parameters. Last experiment was able to remove 75k parameters, yielding a model with 25k parameters. The model was able to achieve 97% accuracy on the MNIST dataset.
+Further elimination of parameters would lead to a decrease in accuracy.
 
-## Citation
+## Citations / References
 
 ```bibtex
 @inproceedings{NIPS1989_6c9882bb,
- author = {LeCun, Yann and Denker, John and Solla, Sara},
- booktitle = {Advances in Neural Information Processing Systems},
- editor = {D. Touretzky},
- pages = {},
- publisher = {Morgan-Kaufmann},
- title = {Optimal Brain Damage},
- url = {https://proceedings.neurips.cc/paper_files/paper/1989/file/6c9882bbac1c7093bd25041881277658-Paper.pdf},
- volume = {2},
- year = {1989}
+        author = {LeCun, Yann and Denker, John and Solla, Sara},
+        booktitle = {Advances in Neural Information Processing Systems},
+        editor = {D. Touretzky},
+        pages = {},
+        publisher = {Morgan-Kaufmann},
+        title = {Optimal Brain Damage},
+        url = {https://proceedings.neurips.cc/paper_files/paper/1989/file/6c9882bbac1c7093bd25041881277658-Paper.pdf},
+        volume = {2},
+        year = {1989}
+}
+```
+
+```
+@misc{yao2021adahessian,
+      title={ADAHESSIAN: An Adaptive Second Order Optimizer for Machine Learning},
+      author={Zhewei Yao and Amir Gholami and Sheng Shen and Mustafa Mustafa and Kurt Keutzer and Michael W. Mahoney},
+      year={2021},
+      eprint={2006.00719},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
 }
 ```

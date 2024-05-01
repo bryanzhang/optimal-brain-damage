@@ -75,18 +75,25 @@ def single_obd_pruning_step():
 
     loss = F.cross_entropy(model(xbatch), ybatch.to(torch.int64))
 
-    # df/dw
+    # df/dw (Jacobian-vector products)
     grads = torch.autograd.grad(loss, model.parameters(), create_graph=True)
 
-    # d^2f/dw^2
+    rademacher_zs = [
+        ((torch.rand(g.shape) < 0.5).float() * 2 - 1) for g in grads
+    ]  # rademacher random variables, because we need to sample from {-1, 1}
+    # Hessian-vector product
     grads2 = torch.autograd.grad(
         grads,
         model.parameters(),
-        grad_outputs=[torch.ones_like(grad) for grad in grads],
+        grad_outputs=rademacher_zs,
     )
 
+    hessian_diags = [g2 * z for g2, z in zip(grads2, rademacher_zs)]
+
+    hessdiag = torch.cat([h.view(-1) for h in hessian_diags])
+
     saliencies = (
-        torch.cat([grad2.contiguous().view(-1) for grad2 in grads2])
+        hessdiag
         * (
             torch.cat([param.contiguous().view(-1) for param in model.parameters()])
             ** 2
