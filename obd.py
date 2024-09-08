@@ -1,6 +1,9 @@
+#! /usr/bin/python3
+
 import torch
 from model import SimpleModel
-import torch.optim as optim
+import torch_optimizer as optim
+#import torch.optim as optim
 from data import get_mnist_loaders
 import torch.nn.functional as F
 from constants import PRETRAIN_MODEL_PATH
@@ -15,21 +18,22 @@ TOP_K = 1000
 
 def pretrain():
     # try to load already pre-trained model, so we don't have to train it again
-    try:
-        model.load_state_dict(torch.load(PRETRAIN_MODEL_PATH))
-        return
-    except FileNotFoundError:
-        pass
-    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
+    #try:
+    #    model.load_state_dict(torch.load(PRETRAIN_MODEL_PATH))
+    #    return
+    #except FileNotFoundError:
+    #    pass
+    #optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
+    optimizer = optim.Adahessian(model.parameters(), lr=0.01, weight_decay=1e-4)
     # Train
     model.train()
 
-    for epoch in range(1, 10):
+    for epoch in range(1, 50):
         for batch_idx, (data, target) in enumerate(train_loader):
             optimizer.zero_grad()
             output = model(data)
             loss = F.cross_entropy(output, target)
-            loss.backward()
+            loss.backward(create_graph=True)
             optimizer.step()
             if batch_idx % 100 == 0:
                 print(
@@ -47,7 +51,8 @@ def pretrain():
 
 
 def train_epoch():
-    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
+    #optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
+    optimizer = optim.Adahessian(model.parameters(), lr=0.01, weight_decay=1e-4)
     # Train
     model.train()
     avg_loss = 0
@@ -57,7 +62,7 @@ def train_epoch():
         optimizer.zero_grad()
         output = model(data)
         loss = F.cross_entropy(output, target)
-        loss.backward()
+        loss.backward(create_graph=True)
         avg_loss += loss.item()
         optimizer.step()
         # set 'frozen' params to 0 again in case they were updated
@@ -149,7 +154,7 @@ def obd():
     accs = []
     losses = []
     n_params_to_0 = []
-    NUMBER_OBD_STEPS = 100
+    NUMBER_OBD_STEPS = 400
 
     for i in range(NUMBER_OBD_STEPS):
         single_obd_pruning_step()
